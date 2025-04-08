@@ -32,7 +32,8 @@ import { ortbConverter } from "../libraries/ortbConverter/converter.js";
  * @typedef {import('../src/adapters/bidderFactory.js').Bid} Bid
  * @typedef {import('../src/adapters/bidderFactory.js').ServerRequest} ServerRequest
  * @typedef {import('../src/adapters/bidderFactory.js').ServerResponse} ServerResponse
- * @typedef {import('../src/adapters/bidderFactory.js').TimedOutBid} TimedOutBid
+ * @typedef {import('../src/adapters/bidderFactory.js').SyncOptions} SyncOptions
+ * @typedef {import('../src/adapters/bidderFactory.js').UserSync} UserSync
  */
 
 const BIDDER_CODE = "adshield";
@@ -48,8 +49,11 @@ export const EVENTS = {
   SET_TARGETING: "client_set_targeting",
   BIDDER_ERROR: "client_bidder_error",
 };
+
+// TODO: change this
 export const EVENT_PIXEL_URL = "https://navvy.media.net/log";
 const OUTSTREAM = "outstream";
+const DEFAULT_CURRENCY = "USD";
 
 let pageMeta;
 
@@ -106,11 +110,6 @@ const converter = ortbConverter({
     return bidResponse;
   },
 });
-
-window.mnet = window.mnet || {};
-window.mnet.queue = window.mnet.queue || [];
-
-getGlobal().medianetGlobals = getGlobal().medianetGlobals || {};
 
 function getTopWindowReferrer() {
   try {
@@ -647,39 +646,35 @@ export const spec = {
     if (ortbAuctionConfigs.length === 0) {
       return validBids;
     }
-    // NOTE: 이전에는 fledgeAuctionConfigs도 존재했는데, 이는 protected audience api (PAAPI) 지원을 위한 것임
-    // 지금 바로는 PAAPI 지원은 하지 않을 것이므로 제거했고, 나중에 필요하다면 추가해야 함
+    // NOTE: Previously, fledgeAuctionConfigs existed, which was for Protected Audience API (PAAPI) support
+    // We currently don't support PAAPI, so it has been removed. If needed in the future, it should be added back
     return validBids;
   },
-  getUserSyncs: function (syncOptions, serverResponses) {
-    let cookieSyncUrls = fetchCookieSyncUrls(serverResponses);
-
-    if (syncOptions.iframeEnabled) {
-      return filterUrlsByType(cookieSyncUrls, "iframe");
-    }
-
-    if (syncOptions.pixelEnabled) {
-      return filterUrlsByType(cookieSyncUrls, "image");
-    }
-  },
 
   /**
-   * @param {TimedOutBid} timeoutData
+   * @param {SyncOptions} syncOptions
+   * @param {ServerResponse[]} serverResponses
+   * @return {string[]}
+   * @description For now, we don't need to support user syncs.
    */
-  onTimeout: (timeoutData) => {
-    try {
-      let eventData = {
-        name: EVENTS.TIMEOUT_EVENT_NAME,
-        value: timeoutData.length,
-        related_data:
-          timeoutData[0].timeout || config.getConfig("bidderTimeout"),
-      };
-      logEvent(eventData, timeoutData);
-    } catch (e) {}
+  getUserSyncs: function (syncOptions, serverResponses) {
+    return [];
   },
 
+  // onTimeout: (timeoutData) => {
+  //   try {
+  //     let eventData = {
+  //       name: EVENTS.TIMEOUT_EVENT_NAME,
+  //       value: timeoutData.length,
+  //       related_data:
+  //         timeoutData[0].timeout || config.getConfig("bidderTimeout"),
+  //     };
+  //     logEvent(eventData, timeoutData);
+  //   } catch (e) {}
+  // },
+
   /**
-   * @param {TimedOutBid} timeoutData
+   * @param {Bid} bid
    */
   onBidWon: (bid) => {
     try {
@@ -691,18 +686,18 @@ export const spec = {
     } catch (e) {}
   },
 
-  onSetTargeting: (bid) => {
-    try {
-      let eventData = {
-        name: EVENTS.SET_TARGETING,
-        value: bid.cpm,
-      };
-      const enableSendAllBids = config.getConfig("enableSendAllBids");
-      if (!enableSendAllBids) {
-        logEvent(eventData, [bid]);
-      }
-    } catch (e) {}
-  },
+  // onSetTargeting: (bid) => {
+  //   try {
+  //     let eventData = {
+  //       name: EVENTS.SET_TARGETING,
+  //       value: bid.cpm,
+  //     };
+  //     const enableSendAllBids = config.getConfig("enableSendAllBids");
+  //     if (!enableSendAllBids) {
+  //       logEvent(eventData, [bid]);
+  //     }
+  //   } catch (e) {}
+  // },
 
   onBidderError: ({ error, bidderRequest }) => {
     try {
