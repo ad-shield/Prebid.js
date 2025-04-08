@@ -482,11 +482,10 @@ function normalizeCoordinates(coordinates) {
 }
 
 /**
- * @param {string} cid
  * @return {string}
  */
-function getBidderURL(cid) {
-  return BID_URL + "?cid=" + encodeURIComponent(cid);
+function getBidderURL() {
+  return BID_URL;
 }
 
 function ortb2Data(ortb2, bidRequests) {
@@ -637,8 +636,16 @@ export const spec = {
     const payload = converter.toORTB({ bidRequests, bidderRequest });
     return {
       method: "POST",
-      url: getBidderURL(payload.ext.customer_id), // TODO: fix
+      url: getBidderURL(),
       data: payload,
+      options: {
+        contentType: "application/json",
+        withCredentials: true,
+        customHeaders: {
+          "x-adshield-app": "prebid/adshieldBidAdapter",
+          "x-openrtb-version": 2.5,
+        },
+      },
     };
   },
 
