@@ -28,12 +28,68 @@ import { ortbConverter } from "../libraries/ortbConverter/converter.js";
 
 /**
  * @typedef {import('../src/adapters/bidderFactory.js').BidRequest} BidRequest
- * @typedef {import('../src/adapters/bidderFactory.js').BidderRequest} BidderRequest // TODO: 실제로 이 타입 정의가 존재하지 않음. 삭제하거나 새로 정의 필요
  * @typedef {import('../src/adapters/bidderFactory.js').Bid} Bid
  * @typedef {import('../src/adapters/bidderFactory.js').ServerRequest} ServerRequest
  * @typedef {import('../src/adapters/bidderFactory.js').ServerResponse} ServerResponse
  * @typedef {import('../src/adapters/bidderFactory.js').SyncOptions} SyncOptions
  * @typedef {import('../src/adapters/bidderFactory.js').UserSync} UserSync
+ */
+
+/**
+ * @typedef {object} refererInfo
+ * 
+ * @property {string | null} canonicalUrl
+ * @property {string} page
+ * @property {string} domain
+ * @property {string | null} referer
+ * @property {number} numIframes
+ * @property {boolean} reachedTop
+ * @property {boolean} isAmp
+ * @property {string[]} stack
+ * {
+    canonicalUrl: null,
+    page: "http://mypage.org?pbjs_debug=true",
+    domain: "mypage.org",
+    referer: null,
+    numIframes: 0,
+    reachedTop: true,
+    isAmp: false,
+    stack: ["http://mypage.org?pbjs_debug=true"]
+  }
+ */
+
+/**
+ * @typedef {object} BidderRequest
+ * 
+ * @property {string} auctionId
+ * @property {number} auctionStart
+ * @property {string} bidderCode
+ * @property {string} bidderRequestId
+ * @property {Bid[]} bids
+ * @property {object} gdprConsent
+ * @property {object} ortb2
+ * @property {object} refererInfo
+ * 
+ * @example
+ * {
+    auctionId: "b06c5141-fe8f-4cdf-9d7d-54415490a917",
+    auctionStart: 1579746300522,
+    bidderCode: "myBidderCode",
+    bidderRequestId: "15246a574e859f",
+    bids: [{...}],
+    gdprConsent: {consentString: "BOtmiBKOtmiBKABABAENAFAAAAACeAAA", vendorData: {...}, gdprApplies: true},
+    ortb2: {...},
+    refererInfo: {
+      canonicalUrl: null,
+      page: "http://mypage.org?pbjs_debug=true",
+      domain: "mypage.org",
+      referer: null,
+      numIframes: 0,
+      reachedTop: true,
+      isAmp: false,
+      stack: ["http://mypage.org?pbjs_debug=true"]
+    }
+  }
  */
 
 const BIDDER_CODE = "adshield";
@@ -444,15 +500,23 @@ function ortb2Data(ortb2, bidRequests) {
   return ortb2Object;
 }
 
-function generatePayload(bidRequests, bidderRequests) {
+/**
+ *
+ * @param {BidRequest[]} bidRequests
+ * @param {BidderRequest} bidderRequest
+ * @returns
+ *
+ * TODO: change this implementation
+ */
+function generatePayload(bidRequests, bidderRequest) {
   return {
-    site: siteDetails(bidRequests[0].params.site, bidderRequests),
-    ext: extParams(bidRequests[0], bidderRequests),
+    site: siteDetails(bidRequests[0].params.site, bidderRequest),
+    ext: extParams(bidRequests[0], bidderRequest),
     // TODO: fix auctionId leak: https://github.com/prebid/Prebid.js/issues/9781
     id: bidRequests[0].auctionId,
-    imp: bidRequests.map((request) => slotParams(request, bidderRequests)),
-    ortb2: ortb2Data(bidderRequests.ortb2, bidRequests),
-    tmax: bidderRequests.timeout,
+    imp: bidRequests.map((request) => slotParams(request, bidderRequest)),
+    ortb2: ortb2Data(bidderRequest.ortb2, bidRequests),
+    tmax: bidderRequest.timeout,
   };
 }
 
@@ -545,41 +609,6 @@ function clearPageMeta() {
   pageMeta = undefined;
 }
 
-function addRenderer(bid) {
-  const videoContext = deepAccess(bid, "context") || "";
-  const vastTimeout = deepAccess(bid, "vto");
-  /* Adding renderer only when the context is Outstream
-     and the provider has responded with a renderer.
-   */
-  if (videoContext == OUTSTREAM && vastTimeout) {
-    bid.renderer = newVideoRenderer(bid);
-  }
-}
-
-function newVideoRenderer(bid) {
-  const renderer = Renderer.install({
-    url: PLAYER_URL,
-  });
-  renderer.setRender(function (bid) {
-    window.mnet.queue.push(function () {
-      const obj = {
-        width: bid.width,
-        height: bid.height,
-        vastTimeout: bid.vto,
-        maxAllowedVastTagRedirects: bid.mavtr,
-        allowVpaid: bid.avp,
-        autoPlay: bid.ap,
-        preload: bid.pl,
-        mute: bid.mt,
-      };
-      const adUnitCode = bid.dfp_id;
-      const divId = getGptSlotInfoForAdUnitCode(adUnitCode).divId || adUnitCode;
-      window.mnet.mediaNetoutstreamPlayer(bid, divId, obj);
-    });
-  });
-  return renderer;
-}
-
 export const spec = {
   code: BIDDER_CODE,
 
@@ -640,7 +669,6 @@ export const spec = {
       logInfo(`${BIDDER_CODE} : no bids`);
     } else {
       validBids = bids.filter((bid) => isValidBid(bid));
-      validBids.forEach(addRenderer);
     }
     const ortbAuctionConfigs = deepAccess(serverResponse, "body.ext.igi") || [];
     if (ortbAuctionConfigs.length === 0) {
