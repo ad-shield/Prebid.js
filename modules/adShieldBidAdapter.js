@@ -1,7 +1,7 @@
 // @ts-check
 import {
   deepAccess,
-  formatQS,
+  // formatQS,
   getWindowTop,
   isArray,
   isEmpty,
@@ -19,7 +19,7 @@ import { BANNER, NATIVE, VIDEO } from "../src/mediaTypes.js";
 import { getRefererInfo } from "../src/refererDetection.js";
 import { getGlobal } from "../src/prebidGlobal.js";
 import { getGptSlotInfoForAdUnitCode } from "../libraries/gptUtils/gptUtils.js";
-import { ajax } from "../src/ajax.js";
+// import { ajax } from "../src/ajax.js";
 import { getViewportCoordinates } from "../libraries/viewport/viewport.js";
 import { getBoundingClientRect } from "../libraries/boundingClientRect/boundingClientRect.js";
 import { ortbConverter } from "../libraries/ortbConverter/converter.js";
@@ -582,24 +582,25 @@ function getLoggingData(event, bids) {
   return Object.assign({}, getEventData(event), logData);
 }
 
-function fireAjaxLog(url, payload) {
-  ajax(
-    url,
-    {
-      success: () => undefined,
-      error: () => undefined,
-    },
-    payload,
-    {
-      method: "POST",
-      keepalive: true,
-    }
-  );
-}
+// function fireAjaxLog(url, payload) {
+//   ajax(
+//     url,
+//     {
+//       success: () => undefined,
+//       error: () => undefined,
+//     },
+//     payload,
+//     {
+//       method: "POST",
+//       keepalive: true,
+//     }
+//   );
+// }
 
 function logEvent(event, data) {
   const logData = getLoggingData(event, data);
-  fireAjaxLog(EVENT_PIXEL_URL, formatQS(logData));
+  console.log("logData", logData);
+  // fireAjaxLog(EVENT_PIXEL_URL, formatQS(logData));
 }
 
 function clearPageMeta() {
@@ -633,7 +634,14 @@ export const spec = {
    * @return {ServerRequest} ServerRequest Info describing the request to the server.
    */
   buildRequests: function (bidRequests, bidderRequest) {
+    console.log(
+      "bidRequests",
+      bidRequests.map((b) => ({ ...b }))
+    );
+    console.log("bidderRequest", { ...bidderRequest });
     const payload = converter.toORTB({ bidRequests, bidderRequest });
+    console.log("payload", payload);
+
     return {
       method: "POST",
       url: getBidderURL(),
@@ -669,8 +677,6 @@ export const spec = {
       request: request.data,
       response: response.body,
     });
-
-    console.log("bids", bids);
 
     if (!isArray(bids) || bids.length === 0) {
       logInfo(`${BIDDER_CODE} : no bids`);
