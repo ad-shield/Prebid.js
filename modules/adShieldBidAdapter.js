@@ -5,7 +5,7 @@ import {
   getWindowTop,
   isArray,
   isEmpty,
-  isEmptyStr,
+  // isEmptyStr,
   isStr,
   logError,
   logInfo,
@@ -17,8 +17,6 @@ import { registerBidder } from "../src/adapters/bidderFactory.js";
 import { config } from "../src/config.js";
 import { BANNER, NATIVE, VIDEO } from "../src/mediaTypes.js";
 import { getRefererInfo } from "../src/refererDetection.js";
-import { Renderer } from "../src/Renderer.js";
-import { convertOrtbRequestToProprietaryNative } from "../src/native.js";
 import { getGlobal } from "../src/prebidGlobal.js";
 import { getGptSlotInfoForAdUnitCode } from "../libraries/gptUtils/gptUtils.js";
 import { ajax } from "../src/ajax.js";
@@ -37,7 +35,7 @@ import { ortbConverter } from "../libraries/ortbConverter/converter.js";
 
 /**
  * @typedef {object} refererInfo
- * 
+ *
  * @property {string | null} canonicalUrl
  * @property {string} page
  * @property {string} domain
@@ -60,7 +58,7 @@ import { ortbConverter } from "../libraries/ortbConverter/converter.js";
 
 /**
  * @typedef {object} BidderRequest
- * 
+ *
  * @property {string} auctionId
  * @property {number} auctionStart
  * @property {string} bidderCode
@@ -69,7 +67,7 @@ import { ortbConverter } from "../libraries/ortbConverter/converter.js";
  * @property {object} gdprConsent
  * @property {object} ortb2
  * @property {object} refererInfo
- * 
+ *
  * @example
  * {
     auctionId: "b06c5141-fe8f-4cdf-9d7d-54415490a917",
@@ -93,7 +91,8 @@ import { ortbConverter } from "../libraries/ortbConverter/converter.js";
  */
 
 const BIDDER_CODE = "adshield";
-const BID_URL = "https://prebid.media.net/rtb/prebid";
+const BID_URL = "http://localhost:8788/ortb";
+
 const SLOT_VISIBILITY = {
   NOT_DETERMINED: 0,
   ABOVE_THE_FOLD: 1,
@@ -108,7 +107,6 @@ export const EVENTS = {
 
 // TODO: change this
 export const EVENT_PIXEL_URL = "https://navvy.media.net/log";
-const OUTSTREAM = "outstream";
 const DEFAULT_CURRENCY = "USD";
 
 let pageMeta;
@@ -229,9 +227,9 @@ function getAbsoluteUrl(url) {
   return aTag.href;
 }
 
-function filterUrlsByType(urls, type) {
-  return urls.filter((url) => url.type === type);
-}
+// function filterUrlsByType(urls, type) {
+//   return urls.filter((url) => url.type === type);
+// }
 
 function transformSizes(sizes) {
   if (isArray(sizes) && sizes.length === 2 && !isArray(sizes[0])) {
@@ -500,42 +498,42 @@ function ortb2Data(ortb2, bidRequests) {
   return ortb2Object;
 }
 
-/**
- *
- * @param {BidRequest[]} bidRequests
- * @param {BidderRequest} bidderRequest
- * @returns
- *
- * TODO: change this implementation
- */
-function generatePayload(bidRequests, bidderRequest) {
-  return {
-    site: siteDetails(bidRequests[0].params.site, bidderRequest),
-    ext: extParams(bidRequests[0], bidderRequest),
-    // TODO: fix auctionId leak: https://github.com/prebid/Prebid.js/issues/9781
-    id: bidRequests[0].auctionId,
-    imp: bidRequests.map((request) => slotParams(request, bidderRequest)),
-    ortb2: ortb2Data(bidderRequest.ortb2, bidRequests),
-    tmax: bidderRequest.timeout,
-  };
-}
+// /**
+//  *
+//  * @param {BidRequest[]} bidRequests
+//  * @param {BidderRequest} bidderRequest
+//  * @returns
+//  *
+//  * TODO: change this implementation
+//  */
+// function generatePayload(bidRequests, bidderRequest) {
+//   return {
+//     site: siteDetails(bidRequests[0].params.site, bidderRequest),
+//     ext: extParams(bidRequests[0], bidderRequest),
+//     // TODO: fix auctionId leak: https://github.com/prebid/Prebid.js/issues/9781
+//     id: bidRequests[0].auctionId,
+//     imp: bidRequests.map((request) => slotParams(request, bidderRequest)),
+//     ortb2: ortb2Data(bidderRequest.ortb2, bidRequests),
+//     tmax: bidderRequest.timeout,
+//   };
+// }
 
 function isValidBid(bid) {
   return bid.no_bid === false && parseFloat(bid.cpm) > 0.0;
 }
 
-function fetchCookieSyncUrls(response) {
-  if (
-    !isEmpty(response) &&
-    response[0].body &&
-    response[0].body.ext &&
-    isArray(response[0].body.ext.csUrl)
-  ) {
-    return response[0].body.ext.csUrl;
-  }
+// function fetchCookieSyncUrls(response) {
+//   if (
+//     !isEmpty(response) &&
+//     response[0].body &&
+//     response[0].body.ext &&
+//     isArray(response[0].body.ext.csUrl)
+//   ) {
+//     return response[0].body.ext.csUrl;
+//   }
 
-  return [];
-}
+//   return [];
+// }
 
 function getEventData(event) {
   const params = {};
@@ -544,7 +542,7 @@ function getEventData(event) {
   params.evtid = "projectevents";
   params.project = "prebid";
   params.pbver = "$prebid.version$";
-  params.cid = getGlobal().medianetGlobals.cid || "";
+  // params.cid = getGlobal().medianetGlobals.cid || "";
   params.dn = encodeURIComponent(referrerInfo.domain || "");
   params.requrl = encodeURIComponent(referrerInfo.page || "");
   params.event = event.name || "";
@@ -636,27 +634,23 @@ export const spec = {
    * @return {ServerRequest} ServerRequest Info describing the request to the server.
    */
   buildRequests: function (bidRequests, bidderRequest) {
-    // convert Native ORTB definition to old-style prebid native definition
-    bidRequests = convertOrtbRequestToProprietaryNative(bidRequests);
-
-    let payload = generatePayload(bidRequests, bidderRequest);
+    const payload = converter.toORTB({ bidRequests, bidderRequest });
     return {
       method: "POST",
-      url: getBidderURL(payload.ext.customer_id),
-      data: JSON.stringify(payload),
-      options: {},
+      url: getBidderURL(payload.ext.customer_id), // TODO: fix
+      data: payload,
     };
   },
 
   /**
    * Unpack the response from the server into a list of bids.
    *
-   * @param {ServerResponse} serverResponse A successful response from the server.
+   * @param {ServerResponse} response A successful response from the server.
    * @param {BidRequest} request
    * @returns {Bid[]} An array of bids which were nested inside the server.
    */
-  interpretResponse: function (serverResponse, request) {
-    if (!serverResponse || !serverResponse.body) {
+  interpretResponse: function (response, request) {
+    if (!response || !response.body) {
       logInfo(`${BIDDER_CODE} : response is empty`);
       return [];
     }
@@ -664,15 +658,17 @@ export const spec = {
     /** @type {Bid[]} */
     let validBids = [];
 
-    let bids = serverResponse.body.bidList;
+    let bids = converter.fromORTB({
+      request: request.data,
+      response: response.body,
+    });
+
+    console.log("bids", bids);
+
     if (!isArray(bids) || bids.length === 0) {
       logInfo(`${BIDDER_CODE} : no bids`);
     } else {
       validBids = bids.filter((bid) => isValidBid(bid));
-    }
-    const ortbAuctionConfigs = deepAccess(serverResponse, "body.ext.igi") || [];
-    if (ortbAuctionConfigs.length === 0) {
-      return validBids;
     }
     // NOTE: Previously, fledgeAuctionConfigs existed, which was for Protected Audience API (PAAPI) support
     // We currently don't support PAAPI, so it has been removed. If needed in the future, it should be added back
