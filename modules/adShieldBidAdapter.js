@@ -1,3 +1,4 @@
+// @ts-check
 import {
   deepAccess,
   formatQS,
@@ -27,7 +28,10 @@ import { ortbConverter } from "../libraries/ortbConverter/converter.js";
 
 /**
  * @typedef {import('../src/adapters/bidderFactory.js').BidRequest} BidRequest
+ * @typedef {import('../src/adapters/bidderFactory.js').BidderRequest} BidderRequest // TODO: 실제로 이 타입 정의가 존재하지 않음. 삭제하거나 새로 정의 필요
  * @typedef {import('../src/adapters/bidderFactory.js').Bid} Bid
+ * @typedef {import('../src/adapters/bidderFactory.js').ServerRequest} ServerRequest
+ * @typedef {import('../src/adapters/bidderFactory.js').ServerResponse} ServerResponse
  * @typedef {import('../src/adapters/bidderFactory.js').TimedOutBid} TimedOutBid
  */
 
@@ -105,8 +109,6 @@ const converter = ortbConverter({
 
 window.mnet = window.mnet || {};
 window.mnet.queue = window.mnet.queue || [];
-
-const aliases = [{ code: TRUSTEDSTACK_CODE, gvlid: 1288 }];
 
 getGlobal().medianetGlobals = getGlobal().medianetGlobals || {};
 
@@ -426,9 +428,12 @@ function normalizeCoordinates(coordinates) {
   };
 }
 
-function getBidderURL(bidderCode, cid) {
-  const url = bidderCode === TRUSTEDSTACK_CODE ? TRUSTEDSTACK_URL : BID_URL;
-  return url + "?cid=" + encodeURIComponent(cid);
+/**
+ * @param {string} cid
+ * @return {string}
+ */
+function getBidderURL(cid) {
+  return BID_URL + "?cid=" + encodeURIComponent(cid);
 }
 
 function ortb2Data(ortb2, bidRequests) {
@@ -575,10 +580,13 @@ function newVideoRenderer(bid) {
   });
   return renderer;
 }
+
 export const spec = {
   code: BIDDER_CODE,
-  gvlid: 142,
-  aliases,
+
+  // TODO: update this gvlid to the correct one
+  gvlid: 142, // IAB Global Vendor List ID
+
   supportedMediaTypes: [BANNER, NATIVE, VIDEO],
 
   /**
@@ -588,25 +596,7 @@ export const spec = {
    * @return boolean True if this is a valid bid (if cid is present), and false otherwise.
    */
   isBidRequestValid: function (bid) {
-    if (!bid.params) {
-      logError(`${BIDDER_CODE} : Missing bid parameters`);
-      return false;
-    }
-
-    if (
-      !bid.params.cid ||
-      !isStr(bid.params.cid) ||
-      isEmptyStr(bid.params.cid)
-    ) {
-      logError(`${BIDDER_CODE} : cid should be a string`);
-      return false;
-    }
-
-    Object.assign(
-      getGlobal().medianetGlobals,
-      !getGlobal().medianetGlobals.cid && { cid: bid.params.cid }
-    );
-
+    // TODO: validate bid request
     return true;
   },
 
@@ -614,33 +604,38 @@ export const spec = {
    * Make a server request from the list of BidRequests.
    *
    * @param {BidRequest[]} bidRequests A non-empty list of bid requests which should be sent to the Server.
-   * @param {BidderRequests} bidderRequests
-   * @return ServerRequest Info describing the request to the server.
+   * @param {BidderRequest} bidderRequest
+   * @return {ServerRequest} ServerRequest Info describing the request to the server.
    */
-  buildRequests: function (bidRequests, bidderRequests) {
+  buildRequests: function (bidRequests, bidderRequest) {
     // convert Native ORTB definition to old-style prebid native definition
     bidRequests = convertOrtbRequestToProprietaryNative(bidRequests);
 
-    let payload = generatePayload(bidRequests, bidderRequests);
+    let payload = generatePayload(bidRequests, bidderRequest);
     return {
       method: "POST",
-      url: getBidderURL(bidderRequests.bidderCode, payload.ext.customer_id),
+      url: getBidderURL(payload.ext.customer_id),
       data: JSON.stringify(payload),
+      options: {},
     };
   },
 
   /**
    * Unpack the response from the server into a list of bids.
    *
-   * @param {*} serverResponse A successful response from the server.
-   * @returns {{bids: *[], fledgeAuctionConfigs: *[]} | *[]} An object containing bids and fledgeAuctionConfigs if present, otherwise an array of bids.
+   * @param {ServerResponse} serverResponse A successful response from the server.
+   * @param {BidRequest} request
+   * @returns {Bid[]} An array of bids which were nested inside the server.
    */
   interpretResponse: function (serverResponse, request) {
-    let validBids = [];
     if (!serverResponse || !serverResponse.body) {
       logInfo(`${BIDDER_CODE} : response is empty`);
-      return validBids;
+      return [];
     }
+
+    /** @type {Bid[]} */
+    let validBids = [];
+
     let bids = serverResponse.body.bidList;
     if (!isArray(bids) || bids.length === 0) {
       logInfo(`${BIDDER_CODE} : no bids`);
@@ -648,21 +643,13 @@ export const spec = {
       validBids = bids.filter((bid) => isValidBid(bid));
       validBids.forEach(addRenderer);
     }
-    const fledgeAuctionConfigs =
-      deepAccess(serverResponse, "body.ext.paApiAuctionConfigs") || [];
     const ortbAuctionConfigs = deepAccess(serverResponse, "body.ext.igi") || [];
-    if (fledgeAuctionConfigs.length === 0 && ortbAuctionConfigs.length === 0) {
+    if (ortbAuctionConfigs.length === 0) {
       return validBids;
     }
-    if (ortbAuctionConfigs.length > 0) {
-      fledgeAuctionConfigs.push(
-        ...ortbAuctionConfigs.map(({ igs }) => igs || []).flat()
-      );
-    }
-    return {
-      bids: validBids,
-      paapi: fledgeAuctionConfigs,
-    };
+    // NOTE: 이전에는 fledgeAuctionConfigs도 존재했는데, 이는 protected audience api (PAAPI) 지원을 위한 것임
+    // 지금 바로는 PAAPI 지원은 하지 않을 것이므로 제거했고, 나중에 필요하다면 추가해야 함
+    return validBids;
   },
   getUserSyncs: function (syncOptions, serverResponses) {
     let cookieSyncUrls = fetchCookieSyncUrls(serverResponses);
