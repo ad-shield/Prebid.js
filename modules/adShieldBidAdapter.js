@@ -11,7 +11,7 @@ import {
   logInfo,
   safeJSONEncode,
   deepClone,
-  deepSetValue,
+  // deepSetValue,
 } from "../src/utils.js";
 import { registerBidder } from "../src/adapters/bidderFactory.js";
 import { config } from "../src/config.js";
@@ -165,28 +165,6 @@ const converter = ortbConverter({
   },
 });
 
-function getTopWindowReferrer() {
-  try {
-    return window.top.document.referrer;
-  } catch (e) {
-    return document.referrer;
-  }
-}
-
-function siteDetails(site, bidderRequest) {
-  const urlData = bidderRequest.refererInfo;
-  site = site || {};
-  let siteData = {
-    domain: site.domain || urlData.domain,
-    page: site.page || urlData.page,
-    ref: site.ref || getTopWindowReferrer(),
-    topMostLocation: urlData.topmostLocation,
-    isTop: site.isTop || urlData.reachedTop,
-  };
-
-  return Object.assign(siteData, getPageMeta());
-}
-
 function getPageMeta() {
   if (pageMeta) {
     return pageMeta;
@@ -317,7 +295,7 @@ function extParams(bidRequest, bidderRequests) {
 }
 
 function slotParams(bidRequest, bidderRequests) {
-  // check with Media.net Account manager for  bid floor and crid parameters
+  // check with Media.net Account manager for bid floor and crid parameters
   let params = {
     id: bidRequest.bidId,
     transactionId: bidRequest.ortb2Imp?.ext?.tid,
@@ -488,37 +466,9 @@ function getBidderURL() {
   return BID_URL;
 }
 
-function ortb2Data(ortb2, bidRequests) {
-  const ortb2Object = deepClone(ortb2);
-  const eids = deepAccess(bidRequests, "0.userIdAsEids");
-  if (eids) {
-    deepSetValue(ortb2Object, "user.ext.eids", eids);
-  }
-  return ortb2Object;
-}
-
-// /**
-//  *
-//  * @param {BidRequest[]} bidRequests
-//  * @param {BidderRequest} bidderRequest
-//  * @returns
-//  *
-//  * TODO: change this implementation
-//  */
-// function generatePayload(bidRequests, bidderRequest) {
-//   return {
-//     site: siteDetails(bidRequests[0].params.site, bidderRequest),
-//     ext: extParams(bidRequests[0], bidderRequest),
-//     // TODO: fix auctionId leak: https://github.com/prebid/Prebid.js/issues/9781
-//     id: bidRequests[0].auctionId,
-//     imp: bidRequests.map((request) => slotParams(request, bidderRequest)),
-//     ortb2: ortb2Data(bidderRequest.ortb2, bidRequests),
-//     tmax: bidderRequest.timeout,
-//   };
-// }
-
 function isValidBid(bid) {
-  return bid.no_bid === false && parseFloat(bid.cpm) > 0.0;
+  return true;
+  // return bid.no_bid === false && parseFloat(bid.cpm) > 0.0;
 }
 
 // function fetchCookieSyncUrls(response) {
@@ -609,11 +559,8 @@ function clearPageMeta() {
 
 export const spec = {
   code: BIDDER_CODE,
-
-  // TODO: update this gvlid to the correct one
-  gvlid: 142, // IAB Global Vendor List ID
-
-  supportedMediaTypes: [BANNER, NATIVE, VIDEO],
+  gvlid: 1385, // IAB Global Vendor List ID
+  supportedMediaTypes: [BANNER, VIDEO],
 
   /**
    * Determines whether or not the given bid request is valid.
@@ -634,13 +581,14 @@ export const spec = {
    * @return {ServerRequest} ServerRequest Info describing the request to the server.
    */
   buildRequests: function (bidRequests, bidderRequest) {
-    console.log(
+    logInfo(
       "bidRequests",
       bidRequests.map((b) => ({ ...b }))
     );
-    console.log("bidderRequest", { ...bidderRequest });
+    logInfo("bidderRequest", { ...bidderRequest });
     const payload = converter.toORTB({ bidRequests, bidderRequest });
-    console.log("payload", payload);
+
+    logInfo("payload", payload);
 
     return {
       method: "POST",
@@ -677,6 +625,8 @@ export const spec = {
       request: request.data,
       response: response.body,
     });
+
+    logInfo("Received bids", bids);
 
     if (!isArray(bids) || bids.length === 0) {
       logInfo(`${BIDDER_CODE} : no bids`);
